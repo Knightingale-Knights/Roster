@@ -468,10 +468,13 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { participant_id, week_start, to_email, cc_email } = req.body;
+  console.log('BODY:', JSON.stringify(req.body));
+  console.log('HEADERS:', JSON.stringify(req.headers));
+
+  const { participant_id, week_start, to_email, cc_email } = req.body || {};
 
   if (!participant_id || !week_start) {
-    return res.status(400).json({ error: 'participant_id and week_start required' });
+    return res.status(400).json({ error: 'participant_id and week_start required', received: req.body });
   }
 
   try {

@@ -3,12 +3,5 @@
     "api/send-roster.js": {
       "maxDuration": 30
     }
-  },
-  "routes": [
-    {
-      "src": "/api/send-roster",
-      "dest": "/api/send-roster.js",
-      "methods": ["POST"]
-    }
-  ]
+  }
 }

@@ -428,8 +428,7 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
       <tbody>${rows}</tbody>
     </table>
 
-    <br>
-    <p style="font-size:14px;color:#222;line-height:1.7;margin:16px 0 0">Best,<br><strong>Paul</strong><br><span style="color:#888;font-size:12px">Knightingale · paul@knightingale.com.au · 0400 000 000</span></p>
+
 
   </td></tr>
 

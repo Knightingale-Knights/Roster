@@ -1,1 +1,7 @@
-
+{
+  "functions": {
+    "api/send-roster.js": {
+      "maxDuration": 30
+    }
+  }
+}

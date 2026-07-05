@@ -405,7 +405,7 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
   <tr><td style="padding:24px 28px">
 
     <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 14px">👋🙂</p>
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName} roster and funding summary attached for the ${weekLabel}.</p>
+    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName}'s roster and funding summary attached for the ${weekLabel}.</p>
 
     <!-- funding stats -->
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:bold;text-align:center;margin-bottom:8px">Quarterly Funding Stats</div>

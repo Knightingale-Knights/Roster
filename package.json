@@ -2,6 +2,6 @@
   "name": "roster-email",
   "version": "1.0.0",
   "dependencies": {
-    "pdfmake": "^0.2.10"
+    "pdfmake": "0.2.10"
   }
 }

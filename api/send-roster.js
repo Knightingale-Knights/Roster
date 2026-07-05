@@ -71,7 +71,22 @@ async function fetchShifts(participantId, weekStart, weekEnd) {
     { key: 'date', constraint_type: 'less than', value: new Date(new Date(weekEnd).getTime() + 86400000).toISOString() },
   ]);
   const data = await bubbleGet('shift', { constraints, sort_field: 'date', ascending: 'true', limit: 50 });
-  return data.response.results || [];
+  const shifts = data.response.results || [];
+
+  // Bubble returns carer as a User ID string — expand each one
+  const carerIds = [...new Set(shifts.map(s => s.carer).filter(c => c && typeof c === 'string'))];
+  const carerMap = {};
+  await Promise.all(carerIds.map(async (id) => {
+    try {
+      const u = await bubbleGet(`user/${id}`);
+      carerMap[id] = u.response;
+    } catch (_) {}
+  }));
+
+  return shifts.map(s => ({
+    ...s,
+    carerObj: typeof s.carer === 'string' ? (carerMap[s.carer] || null) : s.carer,
+  }));
 }
 
 async function fetchNdisQuarter(participantId) {
@@ -111,7 +126,7 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
   const printer = new PdfPrinter(fonts);
 
   const shiftRows = shifts.map(s => {
-    const carerUser = s.carer;
+    const carerUser = s.carerObj;
     const carerName = carerUser
       ? `${carerUser['first name'] || ''} ${carerUser['last name'] || ''}`.trim()
       : 'TBC';
@@ -323,7 +338,7 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
   const remaining = quarter?.['remaining budget'] ?? (total - spent);
 
   const rows = shifts.map(s => {
-    const carerUser = s.carer;
+    const carerUser = s.carerObj;
     const carerName = carerUser
       ? `${carerUser['first name'] || ''} ${carerUser['last name'] || ''}`.trim()
       : 'TBC';

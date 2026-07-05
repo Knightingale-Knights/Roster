@@ -60,8 +60,8 @@ async function fetchParticipant(userId) {
 async function fetchShifts(participantId, weekStart, weekEnd) {
   const constraints = JSON.stringify([
     { key: 'participant', constraint_type: 'equals', value: participantId },
-    { key: 'date', constraint_type: 'greater than or equal to', value: weekStart },
-    { key: 'date', constraint_type: 'less than or equal to', value: weekEnd },
+    { key: 'date', constraint_type: 'greater than', value: new Date(new Date(weekStart).getTime() - 86400000).toISOString() },
+    { key: 'date', constraint_type: 'less than', value: new Date(new Date(weekEnd).getTime() + 86400000).toISOString() },
   ]);
   const data = await bubbleGet('shift', { constraints, sort_field: 'date', ascending: 'true', limit: 50 });
   return data.response.results || [];

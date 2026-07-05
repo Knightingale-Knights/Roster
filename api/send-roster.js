@@ -83,6 +83,8 @@ async function fetchShifts(participantId, weekStart, weekEnd) {
     } catch (_) {}
   }));
 
+  console.log('RAW SHIFT DATES:', shifts.map(s => s.date));
+
   return shifts.map(s => ({
     ...s,
     carerObj: typeof s.carer === 'string' ? (carerMap[s.carer] || null) : s.carer,

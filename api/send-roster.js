@@ -143,8 +143,12 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
   const total = quarter?.amount ?? 0;
   const spent = quarter?.spent ?? 0;
   const remaining = quarter?.['remaining budget'] ?? (total - spent);
+  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
+  const endOfWeekBalance = remaining - weeklyFees;
   const quarterEnd = quarter?.end ? new Date(quarter.end) : null;
   const remainingDays = quarter?.['remaining days'] ?? null;
+  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
+  const endOfWeekBalance = remaining - weeklyFees;
 
   // Runway calculation
   let runwayText = '';
@@ -229,27 +233,35 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
         columns: [
           {
             stack: [
-              { text: fmtMoney(total), fontSize: 14, bold: true, color: CHERRY, alignment: 'center' },
+              { text: fmtMoney(total), fontSize: 12, bold: true, color: CHERRY, alignment: 'center' },
               { text: 'TOTAL', fontSize: 7, color: MUTED, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
             ],
             fillColor: SAND,
-            margin: [0, 10, 4, 10],
+            margin: [0, 10, 3, 10],
           },
           {
             stack: [
-              { text: fmtMoney(spent), fontSize: 14, bold: true, color: CHERRY, alignment: 'center' },
+              { text: fmtMoney(spent), fontSize: 12, bold: true, color: CHERRY, alignment: 'center' },
               { text: 'SPENT', fontSize: 7, color: MUTED, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
             ],
             fillColor: SAND,
-            margin: [4, 10, 4, 10],
+            margin: [3, 10, 3, 10],
           },
           {
             stack: [
-              { text: fmtMoney(remaining), fontSize: 14, bold: true, color: TEAL_TEXT, alignment: 'center' },
+              { text: fmtMoney(remaining), fontSize: 12, bold: true, color: TEAL_TEXT, alignment: 'center' },
               { text: 'REMAINING', fontSize: 7, color: '#085041', bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
             ],
             fillColor: TEAL_BG,
-            margin: [4, 10, 0, 10],
+            margin: [3, 10, 3, 10],
+          },
+          {
+            stack: [
+              { text: fmtMoney(endOfWeekBalance), fontSize: 12, bold: true, color: EUCALYPT, alignment: 'center' },
+              { text: 'END OF WEEK', fontSize: 7, color: EUCALYPT, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
+            ],
+            fillColor: '#e4eeeb',
+            margin: [3, 10, 0, 10],
           },
         ],
         columnGap: 0,
@@ -392,25 +404,30 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
   <!-- body -->
   <tr><td style="padding:24px 28px">
 
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 14px">Hi,</p>
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please find attached the roster for ${participantName} for ${weekLabel}. The PDF has the full schedule and a funding summary for the quarter.</p>
+    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 14px">👋🙂</p>
+    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName} roster and funding summary attached for the ${weekLabel}.</p>
 
     <!-- funding stats -->
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:bold;text-align:center;margin-bottom:8px">Quarterly Funding Stats</div>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px"><tr>
-      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:33%">
-        <div style="font-size:15px;font-weight:bold;color:#681334">${fmtMoney(total)}</div>
+      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:24%">
+        <div style="font-size:13px;font-weight:bold;color:#681334">${fmtMoney(total)}</div>
         <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:2px">Total</div>
       </td>
-      <td style="width:8px"></td>
-      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:33%">
-        <div style="font-size:15px;font-weight:bold;color:#681334">${fmtMoney(spent)}</div>
+      <td style="width:6px"></td>
+      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:24%">
+        <div style="font-size:13px;font-weight:bold;color:#681334">${fmtMoney(spent)}</div>
         <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:2px">Spent</div>
       </td>
-      <td style="width:8px"></td>
-      <td style="background:#eef6f2;border-radius:4px;padding:10px;text-align:center;width:33%">
-        <div style="font-size:15px;font-weight:bold;color:#0F6E56">${fmtMoney(remaining)}</div>
+      <td style="width:6px"></td>
+      <td style="background:#eef6f2;border-radius:4px;padding:10px;text-align:center;width:24%">
+        <div style="font-size:13px;font-weight:bold;color:#0F6E56">${fmtMoney(remaining)}</div>
         <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#085041;margin-top:2px">Remaining</div>
+      </td>
+      <td style="width:6px"></td>
+      <td style="background:#e4eeeb;border-radius:4px;padding:10px;text-align:center;width:24%">
+        <div style="font-size:13px;font-weight:bold;color:#213530">${fmtMoney(endOfWeekBalance)}</div>
+        <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#213530;margin-top:2px">End of week</div>
       </td>
     </tr></table>
 

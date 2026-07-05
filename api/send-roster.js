@@ -147,8 +147,6 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
   const endOfWeekBalance = remaining - weeklyFees;
   const quarterEnd = quarter?.end ? new Date(quarter.end) : null;
   const remainingDays = quarter?.['remaining days'] ?? null;
-  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
-  const endOfWeekBalance = remaining - weeklyFees;
 
   // Runway calculation
   let runwayText = '';
@@ -349,6 +347,8 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
   const total = quarter?.amount ?? 0;
   const spent = quarter?.spent ?? 0;
   const remaining = quarter?.['remaining budget'] ?? (total - spent);
+  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
+  const endOfWeekBalance = remaining - weeklyFees;
 
   const rows = shifts.map(s => {
     const carerUser = s.carerObj;

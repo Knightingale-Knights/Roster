@@ -13,15 +13,22 @@ function fmtTime(n) {
   return `${s.slice(0, 2)}:${s.slice(2)}`;
 }
 
+function parseLocalDate(dateStr) {
+  if (!dateStr) return new Date();
+  const part = dateStr.split('T')[0];
+  const [y, m, d] = part.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function dayName(dateStr) {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('en-AU', { weekday: 'short' });
+  return parseLocalDate(dateStr).toLocaleDateString('en-AU', { weekday: 'short' });
 }
 
 function fmtMoney(n) {

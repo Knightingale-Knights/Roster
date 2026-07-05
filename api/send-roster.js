@@ -15,9 +15,10 @@ function fmtTime(n) {
 
 function parseLocalDate(dateStr) {
   if (!dateStr) return new Date();
-  const part = dateStr.split('T')[0];
-  const [y, m, d] = part.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  // Bubble stores dates as UTC midnight AEST (14:00 UTC = 00:00 AEST next day)
+  // Add 10 hours to convert UTC -> AEST before extracting date
+  const d = new Date(new Date(dateStr).getTime() + 10 * 60 * 60 * 1000);
+  return d;
 }
 
 function fmtDate(dateStr) {
@@ -82,8 +83,6 @@ async function fetchShifts(participantId, weekStart, weekEnd) {
       carerMap[id] = u.response;
     } catch (_) {}
   }));
-
-  console.log('RAW SHIFT DATES:', shifts.map(s => s.date));
 
   return shifts.map(s => ({
     ...s,

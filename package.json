@@ -1,7 +1,6 @@
 {
   "name": "roster-email",
   "version": "1.0.0",
-  "type": "module",
   "dependencies": {
     "pdfmake": "^0.2.10"
   }

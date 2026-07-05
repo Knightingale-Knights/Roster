@@ -1,4 +1,4 @@
-import PdfPrinter from 'pdfmake';
+const PdfPrinter = require('pdfmake');
 
 const BUBBLE_BASE = 'https://knightingale.com.au/api/1.1/obj';
 const BUBBLE_KEY = process.env.BUBBLE_API_KEY;
@@ -465,7 +465,7 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   console.log('BODY:', JSON.stringify(req.body));

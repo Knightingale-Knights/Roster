@@ -21,6 +21,23 @@ function parseLocalDate(dateStr) {
   return d;
 }
 
+function nextMondayAEST() {
+  // "Now" in AEST (UTC+10), regardless of the server's own timezone
+  const nowAest = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const dow = nowAest.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // Days until the NEXT Monday. On a Monday this returns 7 (next week, not today).
+  const daysAhead = ((8 - dow) % 7) || 7;
+  const target = new Date(Date.UTC(
+    nowAest.getUTCFullYear(),
+    nowAest.getUTCMonth(),
+    nowAest.getUTCDate() + daysAhead
+  ));
+  const y = target.getUTCFullYear();
+  const m = String(target.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(target.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function fmtDate(dateStr) {
   if (!dateStr) return '';
   const d = parseLocalDate(dateStr);
@@ -66,10 +83,20 @@ async function fetchParticipant(userId) {
 }
 
 async function fetchShifts(participantId, weekStart, weekEnd) {
+  // Bubble stores dates as AEST midnight = 14:00 UTC the previous day.
+  // Build bounds in that same frame so the window is exactly Mon 00:00 -> Sun 23:59 AEST.
+  const AEST_OFFSET_MS = 10 * 60 * 60 * 1000;
+  const [ys, ms, ds] = weekStart.split('-').map(Number);
+  const [ye, me, de] = weekEnd.split('-').map(Number);
+  // Monday 00:00 AEST, expressed in UTC
+  const lower = new Date(Date.UTC(ys, ms - 1, ds) - AEST_OFFSET_MS);
+  // Sunday 23:59:59 AEST, expressed in UTC
+  const upper = new Date(Date.UTC(ye, me - 1, de) - AEST_OFFSET_MS + 24 * 60 * 60 * 1000 - 1000);
+
   const constraints = JSON.stringify([
     { key: 'participant', constraint_type: 'equals', value: participantId },
-    { key: 'date', constraint_type: 'greater than', value: new Date(new Date(weekStart).getTime() - 86400000).toISOString() },
-    { key: 'date', constraint_type: 'less than', value: new Date(new Date(weekEnd).getTime() + 86400000).toISOString() },
+    { key: 'date', constraint_type: 'greater than', value: new Date(lower.getTime() - 1000).toISOString() },
+    { key: 'date', constraint_type: 'less than', value: upper.toISOString() },
   ]);
   const data = await bubbleGet('shift', { constraints, sort_field: 'date', ascending: 'true', limit: 50 });
   const shifts = data.response.results || [];
@@ -362,11 +389,14 @@ module.exports = async function handler(req, res) {
 
   console.log('PARSED BODY:', JSON.stringify(body));
 
-  const { participant_id, week_start, to_email, cc_email } = body;
+  const { participant_id, to_email, cc_email } = body;
 
-  if (!participant_id || !week_start) {
-    return res.status(400).json({ error: 'participant_id and week_start required', received: body });
+  if (!participant_id) {
+    return res.status(400).json({ error: 'participant_id required', received: body });
   }
+
+  // week_start is optional. Omit it and we use the COMING Monday (AEST).
+  const week_start = body.week_start || nextMondayAEST();
 
   try {
     // week_start expected as YYYY-MM-DD

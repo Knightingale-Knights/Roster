@@ -140,32 +140,6 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
     ];
   });
 
-  const total = quarter?.amount ?? 0;
-  const spent = quarter?.spent ?? 0;
-  const remaining = quarter?.['remaining budget'] ?? (total - spent);
-  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
-  const endOfWeekBalance = remaining - weeklyFees;
-  const quarterEnd = quarter?.end ? new Date(quarter.end) : null;
-  const remainingDays = quarter?.['remaining days'] ?? null;
-
-  // Runway calculation
-  let runwayText = '';
-  if (quarter && spent > 0 && quarterEnd) {
-    const today = new Date();
-    const daysElapsed = Math.max(1, Math.round((today - new Date(quarter.start || today)) / 86400000));
-    const dailyRate = spent / daysElapsed;
-    if (dailyRate > 0 && remaining > 0) {
-      const daysLeft = Math.round(remaining / dailyRate);
-      const projectedEnd = new Date(today);
-      projectedEnd.setDate(today.getDate() + daysLeft);
-      const daysToQEnd = quarterEnd ? Math.round((quarterEnd - today) / 86400000) : null;
-      const weeksEarly = daysToQEnd != null ? Math.round((daysToQEnd - daysLeft) / 7) : null;
-      const projLabel = fmtDate(projectedEnd.toISOString()) + '/' + projectedEnd.getFullYear();
-      runwayText = weeksEarly != null && weeksEarly > 0
-        ? `At the current run rate, funding is projected to last until ${projLabel} — ${weeksEarly} week${weeksEarly !== 1 ? 's' : ''} before quarter end.`
-        : `At the current run rate, funding is projected to last until ${projLabel}.`;
-    }
-  }
 
   const docDefinition = {
     pageSize: 'A4',
@@ -222,66 +196,6 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
         },
         margin: [0, 0, 0, 16],
       },
-
-      // ── Quarterly Funding Stats label ──
-      { text: 'QUARTERLY FUNDING STATS', fontSize: 7, color: MUTED, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
-
-      // ── Funding summary boxes ──
-      {
-        columns: [
-          {
-            stack: [
-              { text: fmtMoney(total), fontSize: 12, bold: true, color: CHERRY, alignment: 'center' },
-              { text: 'TOTAL', fontSize: 7, color: MUTED, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
-            ],
-            fillColor: SAND,
-            margin: [0, 10, 3, 10],
-          },
-          {
-            stack: [
-              { text: fmtMoney(spent), fontSize: 12, bold: true, color: CHERRY, alignment: 'center' },
-              { text: 'SPENT', fontSize: 7, color: MUTED, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
-            ],
-            fillColor: SAND,
-            margin: [3, 10, 3, 10],
-          },
-          {
-            stack: [
-              { text: fmtMoney(remaining), fontSize: 12, bold: true, color: TEAL_TEXT, alignment: 'center' },
-              { text: 'REMAINING', fontSize: 7, color: '#085041', bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
-            ],
-            fillColor: TEAL_BG,
-            margin: [3, 10, 3, 10],
-          },
-          {
-            stack: [
-              { text: fmtMoney(endOfWeekBalance), fontSize: 12, bold: true, color: EUCALYPT, alignment: 'center' },
-              { text: 'END OF WEEK', fontSize: 7, color: EUCALYPT, bold: true, alignment: 'center', margin: [0, 2, 0, 0] },
-            ],
-            fillColor: '#e4eeeb',
-            margin: [3, 10, 0, 10],
-          },
-        ],
-        columnGap: 0,
-        margin: [0, 0, 0, 10],
-      },
-
-      // ── Runway ──
-      ...(runwayText ? [{
-        table: {
-          widths: ['*'],
-          body: [[{
-            text: runwayText,
-            fontSize: 9,
-            color: EUCALYPT,
-            border: [true, false, false, false],
-            borderColor: [EUCALYPT, '', '', ''],
-            fillColor: TEAL_BG,
-            margin: [8, 6, 8, 6],
-          }]],
-        },
-        margin: [0, 0, 0, 14],
-      }] : []),
 
       // ── Section head ──
       {
@@ -344,11 +258,6 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
 // ─── Email HTML ───────────────────────────────────────────────────────────────
 
 function buildEmailHtml(participant, shifts, quarter, weekLabel) {
-  const total = quarter?.amount ?? 0;
-  const spent = quarter?.spent ?? 0;
-  const remaining = quarter?.['remaining budget'] ?? (total - spent);
-  const weeklyFees = shifts.reduce((acc, s) => acc + (s.fee ?? 0), 0);
-  const endOfWeekBalance = remaining - weeklyFees;
 
   const rows = shifts.map(s => {
     const carerUser = s.carerObj;
@@ -405,31 +314,7 @@ function buildEmailHtml(participant, shifts, quarter, weekLabel) {
   <tr><td style="padding:24px 28px">
 
     <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 14px">👋🙂</p>
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName} roster and funding summary attached for the ${weekLabel}.</p>
-
-    <!-- funding stats -->
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:bold;text-align:center;margin-bottom:8px">Quarterly Funding Stats</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px"><tr>
-      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:24%">
-        <div style="font-size:13px;font-weight:bold;color:#681334">${fmtMoney(total)}</div>
-        <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:2px">Total</div>
-      </td>
-      <td style="width:6px"></td>
-      <td style="background:#f7f3f0;border-radius:4px;padding:10px;text-align:center;width:24%">
-        <div style="font-size:13px;font-weight:bold;color:#681334">${fmtMoney(spent)}</div>
-        <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:2px">Spent</div>
-      </td>
-      <td style="width:6px"></td>
-      <td style="background:#eef6f2;border-radius:4px;padding:10px;text-align:center;width:24%">
-        <div style="font-size:13px;font-weight:bold;color:#0F6E56">${fmtMoney(remaining)}</div>
-        <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#085041;margin-top:2px">Remaining</div>
-      </td>
-      <td style="width:6px"></td>
-      <td style="background:#e4eeeb;border-radius:4px;padding:10px;text-align:center;width:24%">
-        <div style="font-size:13px;font-weight:bold;color:#213530">${fmtMoney(endOfWeekBalance)}</div>
-        <div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#213530;margin-top:2px">End of week</div>
-      </td>
-    </tr></table>
+    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName} roster attached for the ${weekLabel}.</p>
 
     <!-- shift table -->
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#681334;font-weight:bold;margin-bottom:8px;padding-bottom:4px;border-bottom:1.5px solid #681334">Shift Schedule</div>

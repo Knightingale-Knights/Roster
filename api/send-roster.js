@@ -7,31 +7,58 @@ const FROM_EMAIL = 'paul@knightingale.com.au';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+const MELB = 'Australia/Melbourne';
+
 function fmtTime(n) {
   if (n == null) return '';
   const s = String(Math.round(n)).padStart(4, '0');
   return `${s.slice(0, 2)}:${s.slice(2)}`;
 }
 
-function parseLocalDate(dateStr) {
-  if (!dateStr) return new Date();
-  // Bubble stores dates as UTC midnight AEST (14:00 UTC = 00:00 AEST next day)
-  // Add 10 hours to convert UTC -> AEST before extracting date
-  const d = new Date(new Date(dateStr).getTime() + 10 * 60 * 60 * 1000);
-  return d;
+// The calendar parts of an instant as seen in Melbourne. Uses the real timezone
+// rules, so it is right on both sides of daylight saving (AEST +10 / AEDT +11)
+// without any hardcoded offset.
+function melbParts(input) {
+  const d = input instanceof Date ? input : new Date(input);
+  const parts = new Intl.DateTimeFormat('en-AU', {
+    timeZone: MELB,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+    weekday: 'short',
+  }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return {
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hour: Number(get('hour')),
+    weekday: get('weekday'),
+  };
+}
+
+// The instant (as a Date) when Melbourne local time is exactly 00:00 on the given
+// calendar day. Bubble stores each shift date as that instant. Tries AEDT (+11)
+// first, then AEST (+10), and keeps whichever really lands on local midnight, so
+// the day daylight saving starts or ends is handled too.
+function melbourneMidnightUtc(y, m, d) {
+  for (const offsetHours of [11, 10]) {
+    const cand = new Date(Date.UTC(y, m - 1, d) - offsetHours * 60 * 60 * 1000);
+    const p = melbParts(cand);
+    if (p.year === y && p.month === m && p.day === d && p.hour === 0) return cand;
+  }
+  return new Date(Date.UTC(y, m - 1, d) - 10 * 60 * 60 * 1000);
 }
 
 function nextMondayAEST() {
-  // "Now" in AEST (UTC+10), regardless of the server's own timezone
-  const nowAest = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const dow = nowAest.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // Today's date in Melbourne, whatever timezone the server runs in
+  const p = melbParts(new Date());
+  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay(); // 0=Sun ... 6=Sat
   // Days until the NEXT Monday. On a Monday this returns 7 (next week, not today).
   const daysAhead = ((8 - dow) % 7) || 7;
-  const target = new Date(Date.UTC(
-    nowAest.getUTCFullYear(),
-    nowAest.getUTCMonth(),
-    nowAest.getUTCDate() + daysAhead
-  ));
+  const target = new Date(Date.UTC(p.year, p.month - 1, p.day + daysAhead));
   const y = target.getUTCFullYear();
   const m = String(target.getUTCMonth() + 1).padStart(2, '0');
   const d = String(target.getUTCDate()).padStart(2, '0');
@@ -40,13 +67,13 @@ function nextMondayAEST() {
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  const d = parseLocalDate(dateStr);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const p = melbParts(dateStr);
+  return `${String(p.day).padStart(2, '0')}/${String(p.month).padStart(2, '0')}`;
 }
 
 function dayName(dateStr) {
   if (!dateStr) return '';
-  return parseLocalDate(dateStr).toLocaleDateString('en-AU', { weekday: 'short' });
+  return melbParts(dateStr).weekday;
 }
 
 function fmtMoney(n) {
@@ -83,15 +110,21 @@ async function fetchParticipant(userId) {
 }
 
 async function fetchShifts(participantId, weekStart, weekEnd) {
-  // Bubble stores dates as AEST midnight = 14:00 UTC the previous day.
-  // Build bounds in that same frame so the window is exactly Mon 00:00 -> Sun 23:59 AEST.
-  const AEST_OFFSET_MS = 10 * 60 * 60 * 1000;
+  // Bubble stores each shift date as Melbourne midnight, which is 13:00 UTC the day
+  // before in daylight saving and 14:00 UTC in standard time. Build the window from
+  // real Melbourne midnights so it is exactly Mon 00:00 to the end of Sun, in either
+  // season. (A fixed +10 offset made Monday shifts drop out and the following
+  // Monday's shifts creep in after daylight saving started.)
   const [ys, ms, ds] = weekStart.split('-').map(Number);
   const [ye, me, de] = weekEnd.split('-').map(Number);
-  // Monday 00:00 AEST, expressed in UTC
-  const lower = new Date(Date.UTC(ys, ms - 1, ds) - AEST_OFFSET_MS);
-  // Sunday 23:59:59 AEST, expressed in UTC
-  const upper = new Date(Date.UTC(ye, me - 1, de) - AEST_OFFSET_MS + 24 * 60 * 60 * 1000 - 1000);
+  const lower = melbourneMidnightUtc(ys, ms, ds);
+  const dayAfterEnd = new Date(Date.UTC(ye, me - 1, de + 1));
+  // Start of the day AFTER the week ends, exclusive, so all of Sunday is included
+  const upper = melbourneMidnightUtc(
+    dayAfterEnd.getUTCFullYear(),
+    dayAfterEnd.getUTCMonth() + 1,
+    dayAfterEnd.getUTCDate()
+  );
 
   const constraints = JSON.stringify([
     { key: 'participant', constraint_type: 'equals', value: participantId },

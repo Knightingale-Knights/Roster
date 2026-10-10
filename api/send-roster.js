@@ -406,7 +406,7 @@ function buildEmailHtml(participant, shifts, weekRangeText, stats) {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#ebe9e4;color:#1e2a4a">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px">
-<table width="580" cellpadding="0" cellspacing="0" style="background:#fff;max-width:580px">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#fff;max-width:580px;border-radius:10px;overflow:hidden">
   <tr><td style="padding:48px 56px 40px">
 
     <!-- top row -->

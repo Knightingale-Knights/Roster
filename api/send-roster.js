@@ -269,11 +269,11 @@ function buildPdf(participant, shifts, weekRangeText, stats) {
           { text: fmtDayMonth(s.date), color: SLATE_LIGHT },
         ],
         border: topBorder,
-        margin: [0, 10, 0, 10],
+        margin: [0, 15, 0, 15],
       },
-      { text: fmtTimeRange(s['start time'], s['end time']), color: INK, border: topBorder, margin: [0, 10, 0, 10] },
-      { text: carerName, color: isTbc ? '#BA7517' : INK, italics: isTbc, border: topBorder, margin: [0, 10, 0, 10] },
-      { text: String(s.hours ?? ''), alignment: 'right', color: INK, border: topBorder, margin: [0, 10, 0, 10] },
+      { text: fmtTimeRange(s['start time'], s['end time']), color: INK, border: topBorder, margin: [0, 15, 0, 15] },
+      { text: carerName, color: isTbc ? '#BA7517' : INK, italics: isTbc, border: topBorder, margin: [0, 15, 0, 15] },
+      { text: String(s.hours ?? ''), alignment: 'right', color: INK, border: topBorder, margin: [0, 15, 0, 15] },
     ];
   });
 
@@ -303,19 +303,32 @@ function buildPdf(participant, shifts, weekRangeText, stats) {
 
       hr([24, 22]),
 
-      // ── Total hours hero ──
-      { text: 'TOTAL HOURS', fontSize: 9.5, color: SLATE_LIGHT, bold: true, characterSpacing: 1.2, margin: [0, 0, 0, 8] },
-      {
-        text: [
-          { text: stats.totalHoursText, font: 'Times', fontSize: 40, color: NAVY },
-          { text: ' hrs', font: 'Times', fontSize: 18, color: SLATE },
-        ],
-        margin: [0, 0, 0, 12],
-      },
+      // ── Stats row: three evenly-spread hero figures ──
       {
         columns: [
-          { text: `${stats.shiftCount} shift${stats.shiftCount === 1 ? '' : 's'}`, fontSize: 11, color: SLATE, width: '*' },
-          { text: `${stats.carerCount} carer${stats.carerCount === 1 ? '' : 's'}`, fontSize: 11, color: SLATE, alignment: 'right' },
+          {
+            width: '*',
+            text: [
+              { text: stats.totalHoursText, font: 'Times', fontSize: 40, color: NAVY },
+              { text: ' hrs', font: 'Times', fontSize: 18, color: SLATE },
+            ],
+          },
+          {
+            width: '*',
+            alignment: 'center',
+            text: [
+              { text: String(stats.shiftCount), font: 'Times', fontSize: 40, color: NAVY },
+              { text: ` shift${stats.shiftCount === 1 ? '' : 's'}`, font: 'Times', fontSize: 18, color: SLATE },
+            ],
+          },
+          {
+            width: '*',
+            alignment: 'right',
+            text: [
+              { text: String(stats.carerCount), font: 'Times', fontSize: 40, color: NAVY },
+              { text: ` carer${stats.carerCount === 1 ? '' : 's'}`, font: 'Times', fontSize: 18, color: SLATE },
+            ],
+          },
         ],
       },
 
@@ -381,10 +394,10 @@ function buildEmailHtml(participant, shifts, weekRangeText, stats) {
     const topBorder = i === 0 ? '' : 'border-top:1px solid #e5e2da;';
     return `
       <tr>
-        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d"><strong>${fmtWeekdayLong(s.date)}</strong> <span style="color:#8a93a6">${fmtDayMonth(s.date)}</span></td>
-        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d">${fmtTimeRange(s['start time'], s['end time'])}</td>
-        <td style="padding:16px 0;${topBorder}font-size:14px;${isTbc ? 'color:#BA7517;font-style:italic' : 'color:#28324d'}">${carerName}</td>
-        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d;text-align:right;font-weight:500">${s.hours ?? ''}</td>
+        <td style="padding:24px 0;${topBorder}font-size:14px;color:#28324d"><strong>${fmtWeekdayLong(s.date)}</strong> <span style="color:#8a93a6">${fmtDayMonth(s.date)}</span></td>
+        <td style="padding:24px 0;${topBorder}font-size:14px;color:#28324d">${fmtTimeRange(s['start time'], s['end time'])}</td>
+        <td style="padding:24px 0;${topBorder}font-size:14px;${isTbc ? 'color:#BA7517;font-style:italic' : 'color:#28324d'}">${carerName}</td>
+        <td style="padding:24px 0;${topBorder}font-size:14px;color:#28324d;text-align:right;font-weight:500">${s.hours ?? ''}</td>
       </tr>`;
   }).join('');
 
@@ -411,12 +424,11 @@ function buildEmailHtml(participant, shifts, weekRangeText, stats) {
 
     <div style="border-top:1.5px solid #1e2a4a;margin:24px 0"></div>
 
-    <!-- total hours hero -->
-    <div style="font-size:11px;letter-spacing:0.12em;color:#8a93a6;font-weight:bold;text-transform:uppercase;margin-bottom:8px">Total Hours</div>
-    <div style="font-family:Georgia,'Times New Roman',serif;font-size:42px;color:#1e2a4a;line-height:1">${stats.totalHoursText}<span style="font-size:18px;color:#6b748a">&nbsp;hrs</span></div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr>
-      <td style="font-size:13px;color:#6b748a">${stats.shiftCount} shift${stats.shiftCount === 1 ? '' : 's'}</td>
-      <td style="font-size:13px;color:#6b748a;text-align:right">${stats.carerCount} carer${stats.carerCount === 1 ? '' : 's'}</td>
+    <!-- stats row -->
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="font-family:Georgia,'Times New Roman',serif;font-size:40px;color:#1e2a4a;line-height:1;text-align:left">${stats.totalHoursText}<span style="font-size:18px;color:#6b748a">&nbsp;hrs</span></td>
+      <td style="font-family:Georgia,'Times New Roman',serif;font-size:40px;color:#1e2a4a;line-height:1;text-align:center">${stats.shiftCount}<span style="font-size:18px;color:#6b748a">&nbsp;shift${stats.shiftCount === 1 ? '' : 's'}</span></td>
+      <td style="font-family:Georgia,'Times New Roman',serif;font-size:40px;color:#1e2a4a;line-height:1;text-align:right">${stats.carerCount}<span style="font-size:18px;color:#6b748a">&nbsp;carer${stats.carerCount === 1 ? '' : 's'}</span></td>
     </tr></table>
 
     <div style="border-top:1.5px solid #1e2a4a;margin:24px 0"></div>

@@ -8,11 +8,35 @@ const FROM_EMAIL = 'paul@knightingale.com.au';
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const MELB = 'Australia/Melbourne';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function fmtTime(n) {
   if (n == null) return '';
   const s = String(Math.round(n)).padStart(4, '0');
   return `${s.slice(0, 2)}:${s.slice(2)}`;
+}
+
+// 24hr number (e.g. 1300) -> "1:00 pm", 0 -> "12:00 am", 1230 -> "12:30 pm"
+function to12h(n) {
+  if (n == null) return '';
+  const v = Math.round(n);
+  let h = Math.floor(v / 100);
+  const m = v % 100;
+  const period = h >= 12 ? 'pm' : 'am';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// "10:00 am to 1:00 pm" — drops the am/pm on the start when it matches the end
+function fmtTimeRange(start, end) {
+  const s12 = to12h(start);
+  const e12 = to12h(end);
+  const sPeriod = s12.slice(-2);
+  const ePeriod = e12.slice(-2);
+  const startText = sPeriod === ePeriod ? s12.slice(0, -3) : s12;
+  return `${startText} to ${e12}`;
 }
 
 // The calendar parts of an instant as seen in Melbourne. Uses the real timezone
@@ -65,10 +89,26 @@ function nextMondayAEST() {
   return `${y}-${m}-${d}`;
 }
 
+// "06/07" style (kept for the filename and other short uses)
 function fmtDate(dateStr) {
   if (!dateStr) return '';
   const p = melbParts(dateStr);
   return `${String(p.day).padStart(2, '0')}/${String(p.month).padStart(2, '0')}`;
+}
+
+// "5 Oct" from a Bubble shift instant (Melbourne day)
+function fmtDayMonth(dateStr) {
+  if (!dateStr) return '';
+  const p = melbParts(dateStr);
+  return `${p.day} ${MONTHS[p.month - 1]}`;
+}
+
+// "Monday" from a Bubble shift instant (Melbourne day)
+function fmtWeekdayLong(dateStr) {
+  if (!dateStr) return '';
+  const p = melbParts(dateStr);
+  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  return WEEKDAYS_LONG[dow];
 }
 
 function dayName(dateStr) {
@@ -90,6 +130,15 @@ function weekRange(weekStart) {
     start: d,
     end,
   };
+}
+
+// "Monday 5 Oct to Sunday 11 Oct" from two YYYY-MM-DD strings
+function weekRangeLong(weekStartStr, weekEndStr) {
+  const [ys, ms, ds] = weekStartStr.split('-').map(Number);
+  const [ye, me, de] = weekEndStr.split('-').map(Number);
+  const startDow = new Date(Date.UTC(ys, ms - 1, ds)).getUTCDay();
+  const endDow = new Date(Date.UTC(ye, me - 1, de)).getUTCDay();
+  return `${WEEKDAYS_LONG[startDow]} ${ds} ${MONTHS[ms - 1]} to ${WEEKDAYS_LONG[endDow]} ${de} ${MONTHS[me - 1]}`;
 }
 
 async function bubbleGet(path, params = {}) {
@@ -164,17 +213,33 @@ async function fetchNdisQuarter(participantId) {
   return results[0] || null;
 }
 
+// ─── shared derivations ────────────────────────────────────────────────────────
+
+function carerNameOf(s) {
+  const c = s.carerObj;
+  return c ? `${c['first name'] || ''} ${c['last name'] || ''}`.trim() : 'TBC';
+}
+
+function computeStats(shifts) {
+  const totalHours = shifts.reduce((acc, s) => acc + (Number(s.hours) || 0), 0);
+  const shiftCount = shifts.length;
+  const carers = new Set(shifts.map(carerNameOf).filter(n => n && n !== 'TBC'));
+  const carerCount = carers.size;
+  // Tidy the hours number: drop trailing .0
+  const totalHoursText = Number.isInteger(totalHours) ? String(totalHours) : totalHours.toFixed(2).replace(/\.?0+$/, '');
+  return { totalHoursText, shiftCount, carerCount };
+}
+
 // ─── PDF generation ──────────────────────────────────────────────────────────
 
-const CHERRY = '#681334';
-const EUCALYPT = '#213530';
-const SAND = '#f7f3f0';
-const TEAL_BG = '#eef6f2';
-const TEAL_TEXT = '#0F6E56';
-const MUTED = '#888888';
-const WHITE = '#ffffff';
+const NAVY = '#1e2a4a';
+const SLATE = '#6b748a';
+const SLATE_LIGHT = '#8a93a6';
+const HAIRLINE = '#d8d5cd';
+const ROW_LINE = '#e5e2da';
+const INK = '#28324d';
 
-function buildPdf(participant, shifts, quarter, weekLabel) {
+function buildPdf(participant, shifts, weekRangeText, stats) {
   const fonts = {
     Helvetica: {
       normal: 'Helvetica',
@@ -182,126 +247,116 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
       italics: 'Helvetica-Oblique',
       bolditalics: 'Helvetica-BoldOblique',
     },
+    Times: {
+      normal: 'Times-Roman',
+      bold: 'Times-Bold',
+      italics: 'Times-Italic',
+      bolditalics: 'Times-BoldItalic',
+    },
   };
 
   const printer = new PdfPrinter(fonts);
+  const participantName = `${participant['first name'] || ''} ${participant['last name'] || ''}`.trim();
 
-  const shiftRows = shifts.map(s => {
-    const carerUser = s.carerObj;
-    const carerName = carerUser
-      ? `${carerUser['first name'] || ''} ${carerUser['last name'] || ''}`.trim()
-      : 'TBC';
+  const shiftRows = shifts.map((s, i) => {
+    const carerName = carerNameOf(s);
+    const isTbc = carerName === 'TBC';
+    const topBorder = i === 0 ? [false, false, false, false] : [false, true, false, false];
     return [
-      { text: dayName(s.date), bold: true, alignment: 'center' },
-      { text: fmtDate(s.date), alignment: 'center', color: '#555555' },
-      { text: `${fmtTime(s['start time'])}–${fmtTime(s['end time'])}`, alignment: 'center', color: '#555555' },
-      { text: String(s.hours ?? ''), alignment: 'center' },
-      { text: carerName, alignment: 'center', italics: carerName === 'TBC', color: carerName === 'TBC' ? '#BA7517' : '#333333' },
+      {
+        text: [
+          { text: fmtWeekdayLong(s.date) + ' ', bold: true, color: INK },
+          { text: fmtDayMonth(s.date), color: SLATE_LIGHT },
+        ],
+        border: topBorder,
+        margin: [0, 10, 0, 10],
+      },
+      { text: fmtTimeRange(s['start time'], s['end time']), color: INK, border: topBorder, margin: [0, 10, 0, 10] },
+      { text: carerName, color: isTbc ? '#BA7517' : INK, italics: isTbc, border: topBorder, margin: [0, 10, 0, 10] },
+      { text: String(s.hours ?? ''), alignment: 'right', color: INK, border: topBorder, margin: [0, 10, 0, 10] },
     ];
   });
 
+  const hr = (space) => ({
+    canvas: [{ type: 'line', x1: 0, y1: 0, x2: 475, y2: 0, lineWidth: 1.2, lineColor: NAVY }],
+    margin: [0, space[0], 0, space[1]],
+  });
 
   const docDefinition = {
     pageSize: 'A4',
-    pageMargins: [40, 40, 40, 50],
-    defaultStyle: { font: 'Helvetica', fontSize: 10 },
+    pageMargins: [60, 56, 60, 56],
+    defaultStyle: { font: 'Helvetica', fontSize: 10, color: INK },
     content: [
-      // ── Header ──
+      // ── Top row: logo + WEEKLY ROSTER ──
       {
-        canvas: [{ type: 'rect', x: -40, y: -40, w: 595, h: 70, color: CHERRY }],
-        margin: [0, 0, 0, 0],
+        columns: [
+          { text: 'Knightingale', font: 'Times', fontSize: 26, color: NAVY, width: '*' },
+          { text: 'WEEKLY ROSTER', font: 'Helvetica', fontSize: 9, color: SLATE_LIGHT, bold: true, characterSpacing: 1.5, alignment: 'right', margin: [0, 12, 0, 0] },
+        ],
+      },
+      hr([20, 22]),
+
+      // ── Date range + name + NDIS ──
+      { text: weekRangeText.toUpperCase(), fontSize: 9.5, color: SLATE_LIGHT, bold: true, characterSpacing: 1.2, margin: [0, 0, 0, 8] },
+      { text: participantName, font: 'Times', fontSize: 34, color: NAVY, margin: [0, 0, 0, 10] },
+      { text: `NDIS number ${participant['ndis number'] || ''}`, fontSize: 11, color: SLATE, margin: [0, 0, 0, 0] },
+
+      hr([24, 22]),
+
+      // ── Total hours hero ──
+      { text: 'TOTAL HOURS', fontSize: 9.5, color: SLATE_LIGHT, bold: true, characterSpacing: 1.2, margin: [0, 0, 0, 8] },
+      {
+        text: [
+          { text: stats.totalHoursText, font: 'Times', fontSize: 40, color: NAVY },
+          { text: ' hrs', font: 'Times', fontSize: 18, color: SLATE },
+        ],
+        margin: [0, 0, 0, 12],
       },
       {
         columns: [
-          { text: 'Knightingale', color: WHITE, fontSize: 16, font: 'Helvetica', margin: [-40, -60, 0, 0] },
-          {
-            stack: [
-              { text: 'Weekly Roster', color: WHITE, fontSize: 12, bold: true },
-              { text: weekLabel, color: 'rgba(255,255,255,0.65)', fontSize: 9, margin: [0, 2, 0, 0] },
-            ],
-            alignment: 'center',
-            margin: [0, -60, 0, 0],
-          },
-          { text: '', margin: [0, -60, -40, 0], width: 100 },
+          { text: `${stats.shiftCount} shift${stats.shiftCount === 1 ? '' : 's'}`, fontSize: 11, color: SLATE, width: '*' },
+          { text: `${stats.carerCount} carer${stats.carerCount === 1 ? '' : 's'}`, fontSize: 11, color: SLATE, alignment: 'right' },
         ],
-        margin: [0, 0, 0, 16],
       },
 
-      // ── Meta band ──
-      {
-        table: {
-          widths: ['*', '*'],
-          body: [[
-            {
-              stack: [
-                { text: 'PARTICIPANT', fontSize: 7, color: MUTED, bold: true, letterSpacing: 1 },
-                { text: `${participant['first name'] || ''} ${participant['last name'] || ''}`.trim(), fontSize: 11, bold: true, margin: [0, 2, 0, 0] },
-              ],
-              alignment: 'center',
-              fillColor: SAND,
-              border: [false, false, false, false],
-              margin: [0, 10, 0, 10],
-            },
-            {
-              stack: [
-                { text: 'NDIS NUMBER', fontSize: 7, color: MUTED, bold: true, letterSpacing: 1 },
-                { text: participant['ndis number'] || '', fontSize: 11, bold: true, margin: [0, 2, 0, 0] },
-              ],
-              alignment: 'center',
-              fillColor: SAND,
-              border: [false, false, false, false],
-              margin: [0, 10, 0, 10],
-            },
-          ]],
-        },
-        margin: [0, 0, 0, 16],
-      },
+      hr([24, 22]),
 
-      // ── Section head ──
-      {
-        canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: CHERRY }],
-        margin: [0, 0, 0, 4],
-      },
-      { text: 'SHIFT SCHEDULE', fontSize: 8, color: CHERRY, bold: true, margin: [0, 0, 0, 8] },
-
-      // ── Shift table ──
+      // ── Shift schedule ──
+      { text: 'SHIFT SCHEDULE', fontSize: 9.5, color: SLATE_LIGHT, bold: true, characterSpacing: 1.2, margin: [0, 0, 0, 12] },
       {
         table: {
           headerRows: 1,
-          widths: ['*', '*', '*', '*', '*'],
+          widths: ['*', '*', '*', 40],
           body: [
             [
               { text: 'DAY', style: 'th' },
-              { text: 'DATE', style: 'th' },
               { text: 'TIME', style: 'th' },
-              { text: 'HRS', style: 'th' },
               { text: 'CARER', style: 'th' },
+              { text: 'HRS', style: 'th', alignment: 'right' },
             ],
             ...shiftRows,
           ],
         },
         layout: {
-          fillColor: (i) => i === 0 ? EUCALYPT : i % 2 === 0 ? '#f9f9f9' : null,
-          hLineWidth: () => 0.5,
+          hLineWidth: (i) => (i === 1 ? 0 : 0.8),
           vLineWidth: () => 0,
-          hLineColor: () => '#ebebeb',
-          paddingLeft: () => 6,
-          paddingRight: () => 6,
-          paddingTop: () => 6,
-          paddingBottom: () => 6,
+          hLineColor: () => ROW_LINE,
+          paddingLeft: () => 0,
+          paddingRight: () => 0,
+          paddingTop: () => 0,
+          paddingBottom: () => 0,
         },
       },
     ],
     styles: {
-      th: { fontSize: 8, color: WHITE, bold: true, alignment: 'center' },
+      th: { fontSize: 8.5, color: SLATE_LIGHT, bold: true, characterSpacing: 1, margin: [0, 0, 0, 10] },
     },
     footer: {
+      margin: [60, 20, 60, 0],
       columns: [
-        { text: `Knightingale · Melbourne, VIC\nGenerated ${fmtDate(new Date().toISOString())}`, fontSize: 8, color: 'rgba(255,255,255,0.6)', margin: [40, 10, 0, 0] },
-        { text: `paul@knightingale.com.au\nknightingale.com.au`, fontSize: 8, color: '#7aab99', alignment: 'right', margin: [0, 10, 40, 0] },
+        { text: 'Knightingale, Melbourne VIC', fontSize: 10, color: SLATE_LIGHT, width: '*' },
+        { text: 'paul@knightingale.com.au', fontSize: 10, color: NAVY, alignment: 'right' },
       ],
-      background: EUCALYPT,
-      margin: [0, 0, 0, 0],
     },
   };
 
@@ -317,92 +372,78 @@ function buildPdf(participant, shifts, quarter, weekLabel) {
 
 // ─── Email HTML ───────────────────────────────────────────────────────────────
 
-function buildEmailHtml(participant, shifts, quarter, weekLabel) {
+function buildEmailHtml(participant, shifts, weekRangeText, stats) {
+  const participantName = `${participant['first name'] || ''} ${participant['last name'] || ''}`.trim();
 
-  const rows = shifts.map(s => {
-    const carerUser = s.carerObj;
-    const carerName = carerUser
-      ? `${carerUser['first name'] || ''} ${carerUser['last name'] || ''}`.trim()
-      : 'TBC';
+  const rows = shifts.map((s, i) => {
+    const carerName = carerNameOf(s);
     const isTbc = carerName === 'TBC';
+    const topBorder = i === 0 ? '' : 'border-top:1px solid #e5e2da;';
     return `
       <tr>
-        <td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:bold">${dayName(s.date)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#555">${fmtDate(s.date)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#555">${fmtTime(s['start time'])}–${fmtTime(s['end time'])}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;text-align:center">${s.hours ?? ''}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;text-align:center;${isTbc ? 'color:#BA7517;font-style:italic' : ''}">${carerName}</td>
+        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d"><strong>${fmtWeekdayLong(s.date)}</strong> <span style="color:#8a93a6">${fmtDayMonth(s.date)}</span></td>
+        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d">${fmtTimeRange(s['start time'], s['end time'])}</td>
+        <td style="padding:16px 0;${topBorder}font-size:14px;${isTbc ? 'color:#BA7517;font-style:italic' : 'color:#28324d'}">${carerName}</td>
+        <td style="padding:16px 0;${topBorder}font-size:14px;color:#28324d;text-align:right;font-weight:500">${s.hours ?? ''}</td>
       </tr>`;
   }).join('');
-
-  const participantName = `${participant['first name'] || ''} ${participant['last name'] || ''}`.trim();
 
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#e8e8e8">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px">
-<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;border:1px solid #d0d0d0">
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#ebe9e4;color:#1e2a4a">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#fff;max-width:580px">
+  <tr><td style="padding:48px 56px 40px">
 
-  <!-- header -->
-  <tr><td style="background:#681334;padding:22px 28px">
+    <!-- top row -->
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="color:#fff;font-size:17px;font-weight:400;width:120px">Knightingale</td>
-      <td style="text-align:center">
-        <div style="color:#fff;font-size:13px;font-weight:bold">Weekly Roster</div>
-        <div style="color:rgba(255,255,255,0.65);font-size:10px;margin-top:3px">${weekLabel}</div>
-      </td>
-      <td style="width:120px"></td>
+      <td style="font-family:Georgia,'Times New Roman',serif;font-size:28px;color:#1e2a4a;letter-spacing:0.5px">Knightingale</td>
+      <td style="font-size:10px;letter-spacing:0.15em;color:#8a93a6;font-weight:bold;text-align:right;vertical-align:bottom">WEEKLY ROSTER</td>
     </tr></table>
-  </td></tr>
 
-  <!-- meta band -->
-  <tr><td style="background:#f7f3f0;border-bottom:1px solid #e8e0dc;padding:12px 28px">
-    <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="text-align:center;width:50%">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:bold;margin-bottom:2px">Participant</div>
-        <div style="font-size:12px;color:#222;font-weight:bold">${participantName}</div>
-      </td>
-      <td style="text-align:center;width:50%">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:bold;margin-bottom:2px">NDIS Number</div>
-        <div style="font-size:12px;color:#222;font-weight:bold">${participant['ndis number'] || ''}</div>
-      </td>
+    <div style="border-top:1.5px solid #1e2a4a;margin:20px 0"></div>
+
+    <!-- date range + name + ndis -->
+    <div style="font-size:11px;letter-spacing:0.12em;color:#8a93a6;font-weight:bold;text-transform:uppercase;margin-bottom:8px">${weekRangeText}</div>
+    <div style="font-family:Georgia,'Times New Roman',serif;font-size:36px;color:#1e2a4a;line-height:1.05;margin-bottom:12px">${participantName}</div>
+    <div style="font-size:13px;color:#6b748a">NDIS number ${participant['ndis number'] || ''}</div>
+
+    <div style="border-top:1.5px solid #1e2a4a;margin:24px 0"></div>
+
+    <!-- total hours hero -->
+    <div style="font-size:11px;letter-spacing:0.12em;color:#8a93a6;font-weight:bold;text-transform:uppercase;margin-bottom:8px">Total Hours</div>
+    <div style="font-family:Georgia,'Times New Roman',serif;font-size:42px;color:#1e2a4a;line-height:1">${stats.totalHoursText}<span style="font-size:18px;color:#6b748a">&nbsp;hrs</span></div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr>
+      <td style="font-size:13px;color:#6b748a">${stats.shiftCount} shift${stats.shiftCount === 1 ? '' : 's'}</td>
+      <td style="font-size:13px;color:#6b748a;text-align:right">${stats.carerCount} carer${stats.carerCount === 1 ? '' : 's'}</td>
     </tr></table>
-  </td></tr>
 
-  <!-- body -->
-  <tr><td style="padding:24px 28px">
+    <div style="border-top:1.5px solid #1e2a4a;margin:24px 0"></div>
 
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 14px">👋🙂</p>
-    <p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 20px">Please see ${participantName} roster attached for the ${weekLabel}.</p>
-
-    <!-- shift table -->
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#681334;font-weight:bold;margin-bottom:8px;padding-bottom:4px;border-bottom:1.5px solid #681334">Shift Schedule</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;border-collapse:collapse">
+    <!-- shift schedule -->
+    <div style="font-size:11px;letter-spacing:0.12em;color:#8a93a6;font-weight:bold;text-transform:uppercase;margin-bottom:14px">Shift Schedule</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
       <thead>
-        <tr style="background:#213530">
-          <th style="color:#fff;padding:8px;text-align:center;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px">Day</th>
-          <th style="color:#fff;padding:8px;text-align:center;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px">Date</th>
-          <th style="color:#fff;padding:8px;text-align:center;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px">Time</th>
-          <th style="color:#fff;padding:8px;text-align:center;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px">Hrs</th>
-          <th style="color:#fff;padding:8px;text-align:center;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px">Carer</th>
+        <tr>
+          <th style="font-size:10px;letter-spacing:0.1em;color:#8a93a6;font-weight:bold;text-transform:uppercase;text-align:left;padding-bottom:10px">Day</th>
+          <th style="font-size:10px;letter-spacing:0.1em;color:#8a93a6;font-weight:bold;text-transform:uppercase;text-align:left;padding-bottom:10px">Time</th>
+          <th style="font-size:10px;letter-spacing:0.1em;color:#8a93a6;font-weight:bold;text-transform:uppercase;text-align:left;padding-bottom:10px">Carer</th>
+          <th style="font-size:10px;letter-spacing:0.1em;color:#8a93a6;font-weight:bold;text-transform:uppercase;text-align:right;padding-bottom:10px">Hrs</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
 
+    <div style="border-top:1px solid #d8d5cd;margin:28px 0 20px"></div>
 
-
-  </td></tr>
-
-  <!-- footer -->
-  <tr><td style="background:#213530;padding:12px 28px">
+    <!-- footer -->
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="color:rgba(255,255,255,0.6);font-size:9px;line-height:1.6">Knightingale · Melbourne, VIC</td>
-      <td style="color:#7aab99;font-size:9px;text-align:right">paul@knightingale.com.au</td>
+      <td style="font-size:12px;color:#8a93a6">Knightingale, Melbourne VIC</td>
+      <td style="font-size:12px;color:#1e2a4a;text-align:right">paul@knightingale.com.au</td>
     </tr></table>
-  </td></tr>
 
+  </td></tr>
 </table>
 </td></tr></table>
 </body></html>`;
@@ -437,25 +478,29 @@ module.exports = async function handler(req, res) {
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setDate(weekStartDate.getDate() + 6);
     const weekEnd = weekEndDate.toISOString().split('T')[0];
-    const { label: weekLabel } = weekRange(weekStartDate.toISOString());
+    const weekRangeText = weekRangeLong(week_start, weekEnd);
 
     // Fetch from Bubble in parallel
-    const [participant, shifts, quarter] = await Promise.all([
+    const [participant, shifts] = await Promise.all([
       fetchParticipant(participant_id),
       fetchShifts(participant_id, week_start, weekEnd),
-      fetchNdisQuarter(participant_id),
     ]);
 
     const recipientEmail = to_email || participant.email;
     if (!recipientEmail) return res.status(400).json({ error: 'No recipient email' });
 
     const participantName = `${participant['first name'] || ''} ${participant['last name'] || ''}`.trim();
-    const subject = `Weekly roster — ${participantName} — ${weekLabel.replace(' ', '')}`;
+    const stats = computeStats(shifts);
+
+    // Subject: "Weekly roster — Johanna Houston — 5 Oct to 11 Oct"
+    const [ys, ms, ds] = week_start.split('-').map(Number);
+    const [ye, me, de] = weekEnd.split('-').map(Number);
+    const subject = `Weekly roster — ${participantName} — ${ds} ${MONTHS[ms - 1]} to ${de} ${MONTHS[me - 1]}`;
 
     // Build PDF and HTML in parallel
     const [pdfBuffer, htmlBody] = await Promise.all([
-      buildPdf(participant, shifts, quarter, weekLabel),
-      Promise.resolve(buildEmailHtml(participant, shifts, quarter, weekLabel)),
+      buildPdf(participant, shifts, weekRangeText, stats),
+      Promise.resolve(buildEmailHtml(participant, shifts, weekRangeText, stats)),
     ]);
 
     const pdfBase64 = pdfBuffer.toString('base64');

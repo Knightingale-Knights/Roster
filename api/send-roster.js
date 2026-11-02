@@ -351,7 +351,7 @@ function buildPdf(participant, shifts, weekRangeText, stats) {
           ],
         },
         layout: {
-          hLineWidth: (i) => (i === 1 ? 0 : 0.8),
+          hLineWidth: (i) => (i === 0 || i === 1 ? 0 : 0.8),
           vLineWidth: () => 0,
           hLineColor: () => ROW_LINE,
           paddingLeft: () => 0,
